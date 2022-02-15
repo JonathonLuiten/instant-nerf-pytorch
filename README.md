@@ -7,7 +7,7 @@ We are trying to make NeRF train super fast in pytorch by using pytorch bindings
 ## Current Progress:
  - Code is implemented and runs, but cannot achieve super good results.
  - Per iteration it is ~3.5x faster than the nerf-pytorch code it is built upon.
- - VERY quickly (1 min) gets up to ~20 PSNR.
+ - VERY quickly (1 min) gets up to ~20 PSNR (this is MUCH faster, even in iteration count than the normal NeRF).
  - But doesn't really get above ~25 PSNR even when training for a long time.
  - There is a bug where running the 'fine' network doesn't work, results above are only for coarse network (e.g. N_importance = 0), and speed comparisons also to only course network, this might be the reason the PSNR doesn't get super high.
 
