@@ -19,7 +19,7 @@ from load_blender import load_blender_data
 from load_LINEMOD import load_LINEMOD_data
 
 from utils import *
-from instant_nerf_pytorch import create_instant_NGP
+from instant_nerf_pytorch import create_instant_ngp
 
 np.random.seed(0)
 DEBUG = False
@@ -375,7 +375,6 @@ def render_rays(ray_batch,
     #TODO: This is a hack to ensure pts inside the bound, otherwise NGP will produce NaN
     pts = pts.clamp(-1, 1)
 
-
 #     raw = run_network(pts)
     raw = network_query_fn(pts, viewdirs, network_fn)
     rgb_map, disp_map, acc_map, weights, depth_map = raw2outputs(raw, z_vals, rays_d, raw_noise_std, white_bkgd, pytest=pytest)
@@ -390,6 +389,9 @@ def render_rays(ray_batch,
 
         z_vals, _ = torch.sort(torch.cat([z_vals, z_samples], -1), -1)
         pts = rays_o[...,None,:] + rays_d[...,None,:] * z_vals[...,:,None] # [N_rays, N_samples + N_importance, 3]
+
+        # TODO: This is a hack to ensure pts inside the bound, otherwise NGP will produce NaN
+        pts = pts.clamp(-1, 1)
 
         run_fn = network_fn if network_fine is None else network_fine
 #         raw = run_network(pts, fn=run_fn)
@@ -637,7 +639,7 @@ def train():
 
     # Create nerf model
     if args.backbone == 'ngp':
-        render_kwargs_train, render_kwargs_test, start, grad_vars, optimizer = create_instant_NGP(args)
+        render_kwargs_train, render_kwargs_test, start, grad_vars, optimizer = create_instant_ngp(args)
     else:
         render_kwargs_train, render_kwargs_test, start, grad_vars, optimizer = create_nerf(args)
     global_step = start
