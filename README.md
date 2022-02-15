@@ -15,7 +15,10 @@ We are trying to make NeRF train super fast in pytorch by using pytorch bindings
 1. Install tiny-cuda-nn (https://github.com/NVlabs/tiny-cuda-nn).
 2. Download, install dependencies and run this code.
 
-Code based upon nerf-pytorch (https://github.com/yenchenlin/nerf-pytorch).
+## Links to sources:
+ - The code is based upon nerf-pytorch (https://github.com/yenchenlin/nerf-pytorch).
+ - We are trying to make this faster, by replacing the torch MLP and Pos_enc with those from tiny-cuda-nn (https://github.com/NVlabs/tiny-cuda-nn).
+ - This should then become a pytorch version of the (cuda) code for Instant-NGP (https://github.com/NVlabs/instant-ngp)
 
 ## Authors:
  - Jonathon Luiten
