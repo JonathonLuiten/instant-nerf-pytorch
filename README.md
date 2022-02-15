@@ -26,4 +26,4 @@ We are trying to make NeRF train super fast in pytorch by using pytorch bindings
 
 
 ## Notes:
-Speicify `--backbone ngp` to enable Instant-NGP (already done in `configs/fern_ngp.txt`).
+Specify `--backbone ngp` to enable Instant-NGP (already done in `configs/fern_ngp.txt`).
