@@ -13,3 +13,7 @@ Code based upon nerf-pytorch (https://github.com/yenchenlin/nerf-pytorch).
 Authors:
  - Jonathon Luiten
  - Kangle Deng
+
+
+## Notes:
+Speicify `--backbone ngp` to enable Instant-NGP (already done in `configs/fern_ngp.txt`).

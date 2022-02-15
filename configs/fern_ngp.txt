@@ -1,0 +1,24 @@
+expname = fern_ngp
+basedir = ./logs
+datadir = /data/datasets/LLFF/nerf_llff_data/fern/
+dataset_type = llff
+
+factor = 4
+llffhold = 8
+
+N_rand = 4096
+N_samples = 128
+N_importance = 0
+
+use_viewdirs = True
+raw_noise_std = 1e0
+
+backbone = ngp
+
+chunk = 262144
+netchunk = 524288
+
+
+i_weights = 10000
+i_testset = 10000
+i_video = 50000

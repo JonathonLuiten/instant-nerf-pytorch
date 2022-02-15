@@ -18,20 +18,12 @@ from load_deepvoxels import load_dv_data
 from load_blender import load_blender_data
 from load_LINEMOD import load_LINEMOD_data
 
+from utils import *
+from instant_nerf_pytorch import create_instant_NGP
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 np.random.seed(0)
 DEBUG = False
 
-
-def batchify(fn, chunk):
-    """Constructs a version of 'fn' that applies to smaller batches.
-    """
-    if chunk is None:
-        return fn
-    def ret(inputs):
-        return torch.cat([fn(inputs[i:i+chunk]) for i in range(0, inputs.shape[0], chunk)], 0)
-    return ret
 
 
 def run_network(inputs, viewdirs, fn, embed_fn, embeddirs_fn, netchunk=1024*64):
@@ -379,6 +371,9 @@ def render_rays(ray_batch,
         z_vals = lower + (upper - lower) * t_rand
 
     pts = rays_o[...,None,:] + rays_d[...,None,:] * z_vals[...,:,None] # [N_rays, N_samples, 3]
+    
+    #TODO: This is a hack to ensure pts inside the bound, otherwise NGP will produce NaN
+    pts = pts.clamp(-1, 1)
 
 
 #     raw = run_network(pts)
@@ -528,6 +523,10 @@ def config_parser():
     parser.add_argument("--i_video",   type=int, default=50000, 
                         help='frequency of render_poses video saving')
 
+    # backbone network
+    parser.add_argument("--backbone", type=str, default="mlp",
+                        help="backbone: mlp / ngp")
+
     return parser
 
 
@@ -637,7 +636,10 @@ def train():
             file.write(open(args.config, 'r').read())
 
     # Create nerf model
-    render_kwargs_train, render_kwargs_test, start, grad_vars, optimizer = create_nerf(args)
+    if args.backbone == 'ngp':
+        render_kwargs_train, render_kwargs_test, start, grad_vars, optimizer = create_instant_NGP(args)
+    else:
+        render_kwargs_train, render_kwargs_test, start, grad_vars, optimizer = create_nerf(args)
     global_step = start
 
     bds_dict = {
@@ -791,12 +793,19 @@ def train():
         # Rest is logging
         if i%args.i_weights==0:
             path = os.path.join(basedir, expname, '{:06d}.tar'.format(i))
-            torch.save({
-                'global_step': global_step,
-                'network_fn_state_dict': render_kwargs_train['network_fn'].state_dict(),
-                'network_fine_state_dict': render_kwargs_train['network_fine'].state_dict(),
-                'optimizer_state_dict': optimizer.state_dict(),
-            }, path)
+            if render_kwargs_train['network_fine'] is not None:
+                torch.save({
+                    'global_step': global_step,
+                    'network_fn_state_dict': render_kwargs_train['network_fn'].state_dict(),
+                    'network_fine_state_dict': render_kwargs_train['network_fine'].state_dict(),
+                    'optimizer_state_dict': optimizer.state_dict(),
+                }, path)
+            else:
+                torch.save({
+                    'global_step': global_step,
+                    'network_fn_state_dict': render_kwargs_train['network_fn'].state_dict(),
+                    'optimizer_state_dict': optimizer.state_dict(),
+                }, path)
             print('Saved checkpoints at', path)
 
         if i%args.i_video==0 and i > 0:
