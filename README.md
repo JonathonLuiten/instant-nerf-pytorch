@@ -17,7 +17,7 @@ We are trying to make NeRF train super fast in pytorch by using pytorch bindings
 
 Code based upon nerf-pytorch (https://github.com/yenchenlin/nerf-pytorch).
 
-Authors:
+## Authors:
  - Jonathon Luiten
  - Kangle Deng
 
