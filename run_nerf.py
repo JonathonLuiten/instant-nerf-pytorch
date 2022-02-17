@@ -7,6 +7,7 @@ import time
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import torchvision
 from tqdm import tqdm, trange
 
 import matplotlib.pyplot as plt
@@ -20,6 +21,7 @@ from load_LINEMOD import load_LINEMOD_data
 
 from utils import *
 from instant_nerf_pytorch import create_instant_ngp
+from torch.utils.tensorboard import SummaryWriter
 
 np.random.seed(0)
 DEBUG = False
@@ -519,7 +521,7 @@ def config_parser():
     # logging/saving options
     parser.add_argument("--i_print",   type=int, default=100, 
                         help='frequency of console printout and metric loggin')
-    parser.add_argument("--i_img",     type=int, default=500, 
+    parser.add_argument("--i_img",     type=int, default=2500, 
                         help='frequency of tensorboard image logging')
     parser.add_argument("--i_weights", type=int, default=10000, 
                         help='frequency of weight ckpt saving')
@@ -539,6 +541,8 @@ def train():
 
     parser = config_parser()
     args = parser.parse_args()
+
+    writer = SummaryWriter(log_dir=os.path.join(args.basedir, args.expname))
 
     # Load data
     K = None
@@ -865,7 +869,7 @@ def train():
     
         if i%args.i_print==0:
             tqdm.write(f"[TRAIN] Iter: {i} Loss: {loss.item()}  PSNR: {psnr.item()}")
-        """
+            """
             print(expname, i, psnr.numpy(), loss.numpy(), global_step.numpy())
             print('iter time {:.05f}'.format(dt))
 
@@ -875,20 +879,11 @@ def train():
                 tf.contrib.summary.histogram('tran', trans)
                 if args.N_importance > 0:
                     tf.contrib.summary.scalar('psnr0', psnr0)
-
+            """
 
             if i%args.i_img==0:
 
-                # Log a rendered validation view to Tensorboard
-                img_i=np.random.choice(i_val)
-                target = images[img_i]
-                pose = poses[img_i, :3,:4]
-                with torch.no_grad():
-                    rgb, disp, acc, extras = render(H, W, focal, chunk=args.chunk, c2w=pose,
-                                                        **render_kwargs_test)
-
-                psnr = mse2psnr(img2mse(rgb, target))
-
+                '''
                 with tf.contrib.summary.record_summaries_every_n_global_steps(args.i_img):
 
                     tf.contrib.summary.image('rgb', to8b(rgb)[tf.newaxis])
@@ -905,7 +900,45 @@ def train():
                         tf.contrib.summary.image('rgb0', to8b(extras['rgb0'])[tf.newaxis])
                         tf.contrib.summary.image('disp0', extras['disp0'][tf.newaxis,...,tf.newaxis])
                         tf.contrib.summary.image('z_std', extras['z_std'][tf.newaxis,...,tf.newaxis])
-        """
+                '''
+
+                # Log rendered validation views to Tensorboard
+                val_targets = images[i_val]
+                val_poses = poses[i_val, :3,:4]
+
+                val_rgbs = []
+                val_disps = []
+                val_accs = []
+
+                with torch.no_grad():
+                    for _, c2w in enumerate(val_poses):
+                            rgb, disp, acc, extras = render(H, W, K, chunk=args.chunk, c2w=c2w[:3,:4], **render_kwargs_test)
+                            val_rgbs.append(rgb)
+                            val_disps.append(disp)
+                            val_accs.append(acc)
+
+                    val_rgbs = torch.stack(val_rgbs, dim = 0)
+                    val_disps = torch.stack(val_disps, dim = 0)
+                    val_accs = torch.stack(val_accs, dim = 0)
+
+                    val_rgbs = val_rgbs.permute(0, 3, 1, 2)             #NCHW
+                    
+                    if not use_batching:
+                        val_targets = torch.Tensor(val_targets).to(device)
+
+                    val_targets = val_targets.permute(0, 3, 1, 2)       #NCHW                    
+                    val_loss = img2mse(val_rgbs, val_targets)
+                    val_psnr = mse2psnr(val_loss)
+
+                writer.add_images('rgb', torch.from_numpy(to8b(val_rgbs.cpu().numpy())), i)
+                writer.add_image('disp', torchvision.utils.make_grid(val_disps[:, None, ...]), i)
+                writer.add_image('acc', torchvision.utils.make_grid(val_accs[:, None, ...]), i)
+                writer.add_scalar('loss_holdout', val_loss, i)
+                writer.add_scalar('psnr_holdout', val_psnr, i)
+                writer.add_images('rgb_holdout', torch.from_numpy(to8b(val_targets.cpu().numpy())), i)
+
+                tqdm.write(f"[VAL] Iter: {i} Loss: {val_loss.item()}  PSNR: {val_psnr.item()}")
+
 
         global_step += 1
 
