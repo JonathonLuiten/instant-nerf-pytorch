@@ -309,7 +309,9 @@ def render_rays(ray_batch,
                 white_bkgd=False,
                 raw_noise_std=0.,
                 verbose=False,
-                pytest=False):
+                pytest=False,
+                pts_mu=torch.zeros(3),
+                pts_std=torch.ones(3)):
     """Volumetric rendering.
     Args:
       ray_batch: array of shape [batch_size, ...]. All information necessary
@@ -345,6 +347,7 @@ def render_rays(ray_batch,
     viewdirs = ray_batch[:,-3:] if ray_batch.shape[-1] > 8 else None
     bounds = torch.reshape(ray_batch[...,6:8], [-1,1,2])
     near, far = bounds[...,0], bounds[...,1] # [-1,1]
+    # print(near, far)
 
     t_vals = torch.linspace(0., 1., steps=N_samples)
     if not lindisp:
@@ -352,7 +355,7 @@ def render_rays(ray_batch,
     else:
         z_vals = 1./(1./near * (1.-t_vals) + 1./far * (t_vals))
 
-    z_vals = z_vals.expand([N_rays, N_samples])
+    z_vals = z_vals.expand([N_rays, N_samples]) # [N_rays, N_samples]
 
     if perturb > 0.:
         # get intervals between samples
@@ -373,7 +376,7 @@ def render_rays(ray_batch,
     pts = rays_o[...,None,:] + rays_d[...,None,:] * z_vals[...,:,None] # [N_rays, N_samples, 3]
     
     #TODO: This is a hack to ensure pts inside the bound, otherwise NGP will produce NaN
-    pts = pts.clamp(-1, 1)
+    pts = (pts - pts_mu.reshape(1,1,3).to(device)) / pts_std.reshape(1,1,3).to(device)
 
 #     raw = run_network(pts)
     raw = network_query_fn(pts, viewdirs, network_fn)
@@ -391,7 +394,7 @@ def render_rays(ray_batch,
         pts = rays_o[...,None,:] + rays_d[...,None,:] * z_vals[...,:,None] # [N_rays, N_samples + N_importance, 3]
 
         # TODO: This is a hack to ensure pts inside the bound, otherwise NGP will produce NaN
-        pts = pts.clamp(-1, 1)
+        pts = (pts - pts_mu.reshape(1,1,3).to(device)) / pts_std.reshape(1,1,3).to(device)
 
         run_fn = network_fn if network_fine is None else network_fine
 #         raw = run_network(pts, fn=run_fn)
@@ -701,6 +704,30 @@ def train():
     if use_batching:
         rays_rgb = torch.Tensor(rays_rgb).to(device)
 
+    # Calculate the grid bound - TODO:Shitty code that requires a lot of memory, need to fix
+    with torch.no_grad():
+        if args.no_batching:
+            rays = np.stack([get_rays_np(H, W, K, p) for p in poses[:,:3,:4].cpu().numpy()], 0) # [N, ro+rd, H, W, 3]
+            rays_rgb = np.concatenate([rays, images[:,None]], 1) # [N, ro+rd+rgb, H, W, 3]
+            rays_rgb = np.transpose(rays_rgb, [0,2,3,1,4]) # [N, H, W, ro+rd+rgb, 3]
+            rays_rgb = np.stack([rays_rgb[i] for i in i_train], 0) # train images only
+            rays_rgb = np.reshape(rays_rgb, [-1,3,3]) # [(N-1)*H*W, ro+rd+rgb, 3]
+            rays_rgb = rays_rgb.astype(np.float32)
+            rays_rgb = torch.Tensor(rays_rgb).to(device)
+        rays_o, rays_d = torch.Tensor(rays_rgb[:,0,:]), torch.Tensor(rays_rgb[:,1,:])
+        if args.dataset_type == 'llff' and not args.no_ndc:
+            rays_o, rays_d = ndc_rays(H, W, K[0][0], 1., rays_o, rays_d)
+        z_vals = torch.Tensor([0., 1.]).expand([rays_o.shape[0], 2])
+        pts = rays_o[:,None,:] + rays_d[:,None,:] * z_vals[:,:,None]
+        pts_max, _ = torch.max(pts.reshape(-1,3), dim=0)
+        pts_min, _ = torch.min(pts.reshape(-1,3), dim=0)
+        pts_mu = (pts_max + pts_min) / 2
+        pts_std = pts_max - pts_mu
+        render_kwargs_train['pts_mu'] = pts_mu
+        render_kwargs_train['pts_std'] = pts_std
+        render_kwargs_test['pts_mu'] = pts_mu
+        render_kwargs_test['pts_std'] = pts_std
+        torch.cuda.empty_cache()
 
     N_iters = 200000 + 1
     print('Begin')

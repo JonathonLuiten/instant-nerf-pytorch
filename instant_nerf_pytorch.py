@@ -47,7 +47,7 @@ def create_instant_ngp(args):
         "n_neurons": 64,
         "n_hidden_layers": 2
     }
-    num_feats_from_base_to_rgb = 16
+    num_feats_from_base_to_rgb = 15
 
     # Model
     class Instant_NGP(nn.Module):
@@ -57,7 +57,7 @@ def create_instant_ngp(args):
             self.input_ch = 3
             self.input_ch_views = 3
             self.base_model = tcnn.NetworkWithInputEncoding(n_input_dims=3,
-                                                            n_output_dims=num_feats_from_base_to_rgb,
+                                                            n_output_dims=1 + num_feats_from_base_to_rgb,
                                                             encoding_config=hash_encoding_config,
                                                             network_config=base_network_config)
             self.rgb_model = tcnn.NetworkWithInputEncoding(n_input_dims=3 + num_feats_from_base_to_rgb,
@@ -71,7 +71,7 @@ def create_instant_ngp(args):
             input_pts, input_views = torch.split(x, [self.input_ch, self.input_ch_views], dim=-1)
             base_output = self.base_model(input_pts)
             alpha = base_output[:, 0]
-            concat_feats = torch.cat([input_views, base_output], 1)
+            concat_feats = torch.cat([input_views, base_output[:, 1:]], 1)
             rgb = self.rgb_model(concat_feats)
             out = torch.cat([rgb, alpha[:, None]], 1)
             return out
